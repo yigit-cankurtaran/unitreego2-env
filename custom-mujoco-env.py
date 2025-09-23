@@ -23,6 +23,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
 
     metadata = {
         "render_modes": ["human", "rgb_array", "depth_array", "rgbd_tuple"],
+        "render_fps": 100,
     }
 
     def __init__(
@@ -242,6 +243,7 @@ def register_unitree_go2_env(
 def make_unitree_go2_env(
     env_id: str = "UnitreeGo2-v0",
     *,
+    render: bool = False,
     register_kwargs: dict | None = None,
     **make_kwargs,
 ):
@@ -249,12 +251,14 @@ def make_unitree_go2_env(
 
     register_kwargs = register_kwargs or {}
     register_unitree_go2_env(env_id=env_id, **register_kwargs)
+    if render and "render_mode" not in make_kwargs:
+        make_kwargs["render_mode"] = "human"
     return gym.make(env_id, **make_kwargs)
 
 
 if __name__ == "__main__":
     # Allow running the file directly as a quick smoke-test.
-    env = make_unitree_go2_env()
+    env = make_unitree_go2_env(render=True)
     obs, _ = env.reset()
     print("Observation shape:", obs.shape)
     env.close()
