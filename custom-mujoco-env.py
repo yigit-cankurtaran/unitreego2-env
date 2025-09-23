@@ -257,8 +257,16 @@ def make_unitree_go2_env(
 
 
 if __name__ == "__main__":
-    # Allow running the file directly as a quick smoke-test.
+    # Run a short random rollout so the viewer stays open long enough to inspect it.
     env = make_unitree_go2_env(render=True)
     obs, _ = env.reset()
     print("Observation shape:", obs.shape)
-    env.close()
+
+    try:
+        for _ in range(1000):
+            action = env.action_space.sample()
+            obs, _, terminated, _, _ = env.step(action)
+            if terminated:
+                env.reset()
+    finally:
+        env.close()
