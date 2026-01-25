@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from stable_baselines3 import SAC
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+from custom_mujoco_env import make_unitree_go2_env
+
+
+def make_env(seed: int, max_episode_steps: int | None) -> DummyVecEnv:
+    def _init():
+        env = make_unitree_go2_env(
+            render=False,
+            max_episode_steps=max_episode_steps,
+            record_episode_statistics=False,
+        )
+        env = Monitor(env)
+        env.reset(seed=seed)
+        return env
+
+    return DummyVecEnv([_init])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train SAC on Unitree Go2.")
+    parser.add_argument("--total-timesteps", type=int, default=20_000)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-episode-steps", type=int, default=1000)
+    parser.add_argument("--model-path", type=Path, default=Path("models/sac_unitree_go2.zip"))
+    parser.add_argument("--tensorboard-log", type=Path, default=Path("logs"))
+    args = parser.parse_args()
+
+    set_random_seed(args.seed)
+    env = make_env(seed=args.seed, max_episode_steps=args.max_episode_steps)
+
+    model = SAC(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        tensorboard_log=str(args.tensorboard_log),
+        device="auto",
+        seed=args.seed,
+    )
+
+    model.learn(total_timesteps=args.total_timesteps)
+
+    args.model_path.parent.mkdir(parents=True, exist_ok=True)
+    model.save(str(args.model_path))
+
+    env.close()
+
+
+if __name__ == "__main__":
+    main()

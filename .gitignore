@@ -6,3 +6,6 @@ __pycache__/
 *.pyd
 .pytest_cache/
 .venv/
+logs/
+models/
+training_metrics.png
