@@ -43,7 +43,7 @@ for _ in range(1000):
 
 ## Diagnostics
 
-- Each `step()` returns additional info fields such as `base_height`, `is_healthy`, `ctrl_cost`, and `contact_cost`.
+- Each `step()` returns additional info fields such as `base_height`, `is_healthy`, `ctrl_cost`, `contact_cost`, and base roll/pitch.
 - `make_unitree_go2_env` wraps the environment in `RecordEpisodeStatistics` by default. Set `record_episode_statistics=False` to disable this.
 
 ## Current limitations

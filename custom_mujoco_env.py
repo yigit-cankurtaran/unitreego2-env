@@ -9,6 +9,7 @@ from gymnasium import spaces, utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.envs.registration import register, registry
 from gymnasium.wrappers import RecordEpisodeStatistics, TimeLimit
+import math
 
 DEFAULT_MODEL_PATH = Path("model") / "unitree_go2.xml"
 DEFAULT_CAMERA_CONFIG = {
@@ -32,6 +33,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         model_path: str | Path = DEFAULT_MODEL_PATH,
         frame_skip: int = 5,
         forward_reward_weight: float = 1.0,
+        lateral_velocity_weight: float = 0.1,
+        orientation_cost_weight: float = 0.5,
         ctrl_cost_weight: float = 2e-3,
         contact_cost_weight: float = 5e-4,
         healthy_reward: float = 1.0,
@@ -56,6 +59,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             self._model_path_argument,
             frame_skip,
             forward_reward_weight,
+            lateral_velocity_weight,
+            orientation_cost_weight,
             ctrl_cost_weight,
             contact_cost_weight,
             healthy_reward,
@@ -72,6 +77,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
 
         # Cache reward shaping parameters for later use in step().
         self._forward_reward_weight = forward_reward_weight
+        self._lateral_velocity_weight = lateral_velocity_weight
+        self._orientation_cost_weight = orientation_cost_weight
         self._ctrl_cost_weight = ctrl_cost_weight
         self._contact_cost_weight = contact_cost_weight
         self._healthy_reward = healthy_reward
@@ -165,13 +172,23 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         xy_velocity = (xy_position_after - xy_position_before) / self.dt
         x_velocity, y_velocity = xy_velocity
 
-        forward_reward = self._forward_reward_weight * float(x_velocity)
+        forward_reward = self._forward_reward_weight * float(max(x_velocity, 0.0))
         healthy_reward = self.healthy_reward
         ctrl_cost = self.control_cost(action)
         contact_cost = self.contact_cost
+        roll, pitch = self._roll_pitch()
+        lateral_cost = self._lateral_velocity_weight * float(np.square(y_velocity))
+        orientation_cost = self._orientation_cost_weight * float(roll * roll + pitch * pitch)
 
         observation = self._get_obs()
-        reward = forward_reward + healthy_reward - ctrl_cost - contact_cost
+        reward = (
+            forward_reward
+            + healthy_reward
+            - ctrl_cost
+            - contact_cost
+            - lateral_cost
+            - orientation_cost
+        )
         terminated = self.terminated
 
         info = {
@@ -179,10 +196,16 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_survive": healthy_reward,
             "reward_ctrl": -ctrl_cost,
             "reward_contact": -contact_cost,
+            "reward_lateral": -lateral_cost,
+            "reward_orientation": -orientation_cost,
             "ctrl_cost": ctrl_cost,
             "contact_cost": contact_cost,
+            "lateral_cost": lateral_cost,
+            "orientation_cost": orientation_cost,
             "is_healthy": self.is_healthy,
             "base_height": float(self.data.qpos[2]),
+            "base_roll": float(roll),
+            "base_pitch": float(pitch),
             "x_position": float(xy_position_after[0]),
             "y_position": float(xy_position_after[1]),
             "x_velocity": float(x_velocity),
@@ -233,6 +256,22 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         if candidate.is_absolute():
             return candidate
         return Path(__file__).resolve().parent / candidate
+
+    def _roll_pitch(self) -> tuple[float, float]:
+        """Compute roll and pitch from the base quaternion."""
+
+        quat = self.data.qpos[3:7]
+        qw, qx, qy, qz = float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+
+        sinr_cosp = 2.0 * (qw * qx + qy * qz)
+        cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        sinp = 2.0 * (qw * qy - qz * qx)
+        sinp = max(-1.0, min(1.0, sinp))
+        pitch = math.asin(sinp)
+
+        return roll, pitch
 
     def _find_geom_id(self, geom_name: str) -> int | None:
         """Return the geom id for a given name, or None if missing."""

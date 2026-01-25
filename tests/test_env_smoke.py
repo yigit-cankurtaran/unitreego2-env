@@ -27,6 +27,10 @@ def test_env_reset_and_step():
         assert "is_healthy" in info
         assert "ctrl_cost" in info
         assert "contact_cost" in info
+        assert "base_roll" in info
+        assert "base_pitch" in info
+        assert "lateral_cost" in info
+        assert "orientation_cost" in info
     finally:
         env.close()
 
