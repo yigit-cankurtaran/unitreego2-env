@@ -44,7 +44,7 @@ for _ in range(1000):
 ## Current limitations
 
 - The environment is not stabilized for training yet.
-- No domain randomization is implemented.
+- Domain randomization is limited to ground friction and actuator strength.
 
 ## Roadmap ideas
 

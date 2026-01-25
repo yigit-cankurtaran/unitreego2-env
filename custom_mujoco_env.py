@@ -40,6 +40,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         contact_force_range: tuple[float, float] = (-1.0, 1.0),
         reset_noise_scale: float = 0.01,
         exclude_current_positions_from_observation: bool = True,
+        domain_randomization: bool = False,
+        friction_scale_range: tuple[float, float] = (0.7, 1.3),
+        actuator_strength_scale_range: tuple[float, float] = (0.85, 1.15),
         **kwargs,
     ):
         """Load the MuJoCo model and set reward / termination coefficients."""
@@ -61,6 +64,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             contact_force_range,
             reset_noise_scale,
             exclude_current_positions_from_observation,
+            domain_randomization,
+            friction_scale_range,
+            actuator_strength_scale_range,
             **kwargs,
         )
 
@@ -76,6 +82,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._exclude_current_positions_from_observation = (
             exclude_current_positions_from_observation
         )
+        self._domain_randomization = domain_randomization
+        self._friction_scale_range = friction_scale_range
+        self._actuator_strength_scale_range = actuator_strength_scale_range
 
         MujocoEnv.__init__(
             self,
@@ -85,6 +94,10 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             default_camera_config=DEFAULT_CAMERA_CONFIG,
             **kwargs,
         )
+
+        self._ground_geom_id = self._find_geom_id("ground")
+        self._base_geom_friction = self.model.geom_friction.copy()
+        self._base_actuator_gear = self.model.actuator_gear.copy()
 
         # Build observation space dynamically from an initial observation vector.
         observation = self._get_obs()
@@ -193,6 +206,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
     def reset_model(self) -> np.ndarray:
         """Apply small random noise around the reference pose to start an episode."""
 
+        if self._domain_randomization:
+            self._apply_domain_randomization()
+
         noise_low = -self._reset_noise_scale
         noise_high = self._reset_noise_scale
 
@@ -213,6 +229,29 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         if candidate.is_absolute():
             return candidate
         return Path(__file__).resolve().parent / candidate
+
+    def _find_geom_id(self, geom_name: str) -> int | None:
+        """Return the geom id for a given name, or None if missing."""
+
+        try:
+            return int(self.model.geom(geom_name).id)
+        except KeyError:
+            return None
+
+    def _apply_domain_randomization(self) -> None:
+        """Randomize select physics properties for robustness."""
+
+        self.model.geom_friction[:] = self._base_geom_friction
+        self.model.actuator_gear[:] = self._base_actuator_gear
+
+        friction_scale = self.np_random.uniform(*self._friction_scale_range)
+        if self._ground_geom_id is not None:
+            self.model.geom_friction[self._ground_geom_id, :] = (
+                self._base_geom_friction[self._ground_geom_id, :] * friction_scale
+            )
+
+        actuator_scale = self.np_random.uniform(*self._actuator_strength_scale_range)
+        self.model.actuator_gear[:] = self._base_actuator_gear * actuator_scale
 
 
 def register_unitree_go2_env(
