@@ -44,7 +44,6 @@ for _ in range(1000):
 ## Current limitations
 
 - The environment is not stabilized for training yet.
-- Episode time limits are not enforced by default. Will use Gymnasium wrappers such as `TimeLimit`.
 - No domain randomization is implemented.
 
 ## Roadmap ideas

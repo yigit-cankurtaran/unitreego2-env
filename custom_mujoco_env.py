@@ -8,6 +8,7 @@ import numpy as np
 from gymnasium import spaces, utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.envs.registration import register, registry
+from gymnasium.wrappers import TimeLimit
 
 DEFAULT_MODEL_PATH = Path("model") / "unitree_go2.xml"
 DEFAULT_CAMERA_CONFIG = {
@@ -241,16 +242,23 @@ def make_unitree_go2_env(
     env_id: str = "UnitreeGo2-v0",
     *,
     render: bool = False,
+    max_episode_steps: int | None = 1000,
     register_kwargs: dict | None = None,
     **make_kwargs,
 ):
-    """Helper that registers (if needed) and returns ``gym.make`` for you."""
+    """Helper that registers (if needed), applies a TimeLimit, and returns an env."""
 
     register_kwargs = register_kwargs or {}
     register_unitree_go2_env(env_id=env_id, **register_kwargs)
     if render and "render_mode" not in make_kwargs:
         make_kwargs["render_mode"] = "human"
-    return gym.make(env_id, **make_kwargs)
+    env = gym.make(env_id, **make_kwargs)
+    if max_episode_steps is not None:
+        if isinstance(env, TimeLimit):
+            env._max_episode_steps = max_episode_steps
+        else:
+            env = TimeLimit(env, max_episode_steps=max_episode_steps)
+    return env
 
 
 if __name__ == "__main__":
