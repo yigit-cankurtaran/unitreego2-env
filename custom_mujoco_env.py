@@ -98,10 +98,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
     def healthy_reward(self) -> float:
         """Reward granted for staying in an upright, healthy pose."""
 
-        return (
-            float(self.is_healthy or self._terminate_when_unhealthy)
-            * self._healthy_reward
-        )
+        return float(self.is_healthy) * self._healthy_reward
 
     def control_cost(self, action: np.ndarray) -> float:
         """Quadratic penalty scaled by ``ctrl_cost_weight``."""
