@@ -8,7 +8,7 @@ import numpy as np
 from gymnasium import spaces, utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.envs.registration import register, registry
-from gymnasium.wrappers import TimeLimit
+from gymnasium.wrappers import RecordEpisodeStatistics, TimeLimit
 
 DEFAULT_MODEL_PATH = Path("model") / "unitree_go2.xml"
 DEFAULT_CAMERA_CONFIG = {
@@ -179,6 +179,10 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_survive": healthy_reward,
             "reward_ctrl": -ctrl_cost,
             "reward_contact": -contact_cost,
+            "ctrl_cost": ctrl_cost,
+            "contact_cost": contact_cost,
+            "is_healthy": self.is_healthy,
+            "base_height": float(self.data.qpos[2]),
             "x_position": float(xy_position_after[0]),
             "y_position": float(xy_position_after[1]),
             "x_velocity": float(x_velocity),
@@ -282,6 +286,7 @@ def make_unitree_go2_env(
     *,
     render: bool = False,
     max_episode_steps: int | None = 1000,
+    record_episode_statistics: bool = True,
     register_kwargs: dict | None = None,
     **make_kwargs,
 ):
@@ -297,6 +302,8 @@ def make_unitree_go2_env(
             env._max_episode_steps = max_episode_steps
         else:
             env = TimeLimit(env, max_episode_steps=max_episode_steps)
+    if record_episode_statistics and not isinstance(env, RecordEpisodeStatistics):
+        env = RecordEpisodeStatistics(env)
     return env
 
 
