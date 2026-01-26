@@ -37,9 +37,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         orientation_cost_weight: float = 0.2,
         ctrl_cost_weight: float = 1e-3,
         contact_cost_weight: float = 2e-4,
-        healthy_reward: float = 0.2,
+        healthy_reward: float = 0.8,
         low_speed_threshold: float = 0.2,
-        low_speed_penalty_weight: float = 0.5,
+        low_speed_penalty_weight: float = 0.0,
         terminate_when_unhealthy: bool = True,
         healthy_z_range: tuple[float, float] = (0.22, 0.5),
         contact_force_range: tuple[float, float] = (-1.0, 1.0),
@@ -186,7 +186,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         lateral_cost = self._lateral_velocity_weight * float(np.square(y_velocity))
         orientation_cost = self._orientation_cost_weight * float(roll * roll + pitch * pitch)
         low_speed_penalty = 0.0
-        if x_velocity < self._low_speed_threshold:
+        if self._low_speed_penalty_weight > 0.0 and x_velocity < self._low_speed_threshold:
             low_speed_penalty = self._low_speed_penalty_weight * float(
                 self._low_speed_threshold - x_velocity
             )
