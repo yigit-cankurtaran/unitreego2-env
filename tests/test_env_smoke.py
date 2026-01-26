@@ -32,6 +32,7 @@ def test_env_reset_and_step():
         assert "lateral_cost" in info
         assert "orientation_cost" in info
         assert "low_speed_penalty" in info
+        assert "fall_penalty" in info
     finally:
         env.close()
 

@@ -40,6 +40,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         healthy_reward: float = 0.8,
         low_speed_threshold: float = 0.2,
         low_speed_penalty_weight: float = 0.0,
+        fall_penalty: float = 5.0,
         terminate_when_unhealthy: bool = True,
         healthy_z_range: tuple[float, float] = (0.22, 0.5),
         contact_force_range: tuple[float, float] = (-1.0, 1.0),
@@ -68,6 +69,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             healthy_reward,
             low_speed_threshold,
             low_speed_penalty_weight,
+            fall_penalty,
             terminate_when_unhealthy,
             healthy_z_range,
             contact_force_range,
@@ -88,6 +90,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._healthy_reward = healthy_reward
         self._low_speed_threshold = low_speed_threshold
         self._low_speed_penalty_weight = low_speed_penalty_weight
+        self._fall_penalty = fall_penalty
         self._terminate_when_unhealthy = terminate_when_unhealthy
         self._healthy_z_range = healthy_z_range
         self._contact_force_range = contact_force_range
@@ -202,6 +205,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             - low_speed_penalty
         )
         terminated = self.terminated
+        fall_penalty = self._fall_penalty if terminated else 0.0
+        reward -= fall_penalty
 
         info = {
             "reward_forward": forward_reward,
@@ -211,11 +216,13 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_lateral": -lateral_cost,
             "reward_orientation": -orientation_cost,
             "reward_low_speed": -low_speed_penalty,
+            "reward_fall": -fall_penalty,
             "ctrl_cost": ctrl_cost,
             "contact_cost": contact_cost,
             "lateral_cost": lateral_cost,
             "orientation_cost": orientation_cost,
             "low_speed_penalty": low_speed_penalty,
+            "fall_penalty": fall_penalty,
             "is_healthy": self.is_healthy,
             "base_height": float(self.data.qpos[2]),
             "base_roll": float(roll),
