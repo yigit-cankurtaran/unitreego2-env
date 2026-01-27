@@ -46,6 +46,30 @@ for _ in range(1000):
 - Each `step()` returns additional info fields such as `base_height`, `is_healthy`, `upright`, `ctrl_cost`, `contact_cost`, base roll/pitch, and low-speed/fall penalty terms.
 - `make_unitree_go2_env` wraps the environment in `RecordEpisodeStatistics` by default. Set `record_episode_statistics=False` to disable this.
 
+## Reward shaping (locomotion-focused)
+
+The current reward is tuned to discourage “stand still and survive” behaviors while still rewarding forward motion:
+
+- Forward reward: `forward_reward_weight * max(x_velocity, 0)`.
+- Survival reward: scaled by forward speed (`healthy_reward * clip(speed / low_speed_threshold, 0, 1)`), so standing still does not pay.
+- Low-speed penalty: applied when `x_velocity < low_speed_threshold`.
+- Idle penalty: per-second penalty when `forward_speed < idle_speed_threshold` (scaled by `dt`).
+- Action-rate penalty: discourages jitter by penalizing changes in action from one step to the next.
+- Orientation/lateral/control/contact penalties and a fall penalty remain.
+
+All weights/thresholds are configurable via `UnitreeGo2Env` init args (`idle_speed_threshold`, `idle_penalty_weight`, `action_rate_penalty_weight`, etc.).
+
+## Training defaults (SAC)
+
+`train_sac.py` now exposes common SAC hyperparameters. Defaults are set for longer runs:
+
+- `learning_rate=3e-4`, `buffer_size=1_000_000`, `batch_size=256`
+- `learning_starts=10_000`, `train_freq=1`, `gradient_steps=1`
+- `gamma=0.99`, `tau=0.005`, `ent_coef=auto`, `target_entropy=auto`
+- Policy MLP: `[256, 256]`
+
+For meaningful locomotion, expect to train for millions of timesteps (e.g., 3–10M).
+
 ## Current limitations
 
 - The environment is not stabilized for training yet.

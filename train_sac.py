@@ -47,6 +47,16 @@ def main() -> None:
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--tensorboard-log", type=Path, default=None)
+    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--buffer-size", type=int, default=1_000_000)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--learning-starts", type=int, default=10_000)
+    parser.add_argument("--train-freq", type=int, default=1)
+    parser.add_argument("--gradient-steps", type=int, default=1)
+    parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--tau", type=float, default=0.005)
+    parser.add_argument("--ent-coef", type=str, default="auto")
+    parser.add_argument("--target-entropy", type=str, default="auto")
     args = parser.parse_args()
 
     run_id = args.run_id or _next_run_id(Path("models"))
@@ -62,6 +72,13 @@ def main() -> None:
         n_envs=args.n_envs,
     )
 
+    ent_coef = args.ent_coef if args.ent_coef.startswith("auto") else float(args.ent_coef)
+    target_entropy = (
+        args.target_entropy
+        if args.target_entropy.startswith("auto")
+        else float(args.target_entropy)
+    )
+
     model = SAC(
         "MlpPolicy",
         env,
@@ -69,6 +86,17 @@ def main() -> None:
         tensorboard_log=str(tensorboard_log),
         device="auto",
         seed=args.seed,
+        learning_rate=args.learning_rate,
+        buffer_size=args.buffer_size,
+        batch_size=args.batch_size,
+        learning_starts=args.learning_starts,
+        train_freq=(args.train_freq, "step"),
+        gradient_steps=args.gradient_steps,
+        gamma=args.gamma,
+        tau=args.tau,
+        ent_coef=ent_coef,
+        target_entropy=target_entropy,
+        policy_kwargs={"net_arch": [256, 256]},
     )
 
     model.learn(total_timesteps=args.total_timesteps)
