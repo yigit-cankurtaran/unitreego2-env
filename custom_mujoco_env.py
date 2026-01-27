@@ -9,6 +9,7 @@ from gymnasium import spaces, utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.envs.registration import register, registry
 from gymnasium.wrappers import RecordEpisodeStatistics, TimeLimit
+import mujoco
 import math
 
 DEFAULT_MODEL_PATH = Path("model") / "unitree_go2.xml"
@@ -37,6 +38,10 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         orientation_cost_weight: float = 0.2,
         ctrl_cost_weight: float = 1e-3,
         contact_cost_weight: float = 2e-4,
+        foot_contact_cost_weight: float = 5e-5,
+        rear_contact_reward_weight: float = 0.1,
+        contact_balance_weight: float = 0.05,
+        contact_force_clip: float = 1.0,
         healthy_reward: float = 0.5,
         low_speed_threshold: float = 0.3,
         low_speed_penalty_weight: float = 2.5,
@@ -70,6 +75,10 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             orientation_cost_weight,
             ctrl_cost_weight,
             contact_cost_weight,
+            foot_contact_cost_weight,
+            rear_contact_reward_weight,
+            contact_balance_weight,
+            contact_force_clip,
             healthy_reward,
             low_speed_threshold,
             low_speed_penalty_weight,
@@ -95,6 +104,10 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._orientation_cost_weight = orientation_cost_weight
         self._ctrl_cost_weight = ctrl_cost_weight
         self._contact_cost_weight = contact_cost_weight
+        self._foot_contact_cost_weight = foot_contact_cost_weight
+        self._rear_contact_reward_weight = rear_contact_reward_weight
+        self._contact_balance_weight = contact_balance_weight
+        self._contact_force_clip = contact_force_clip
         self._healthy_reward = healthy_reward
         self._low_speed_threshold = low_speed_threshold
         self._low_speed_penalty_weight = low_speed_penalty_weight
@@ -127,6 +140,24 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._base_geom_friction = self.model.geom_friction.copy()
         self._base_actuator_gear = self.model.actuator_gear.copy()
         self._last_action = np.zeros(self.model.nu, dtype=np.float64)
+        self._contact_force_buffer = np.zeros(6, dtype=np.float64)
+        self._last_contact_summary: tuple[float, float, float, int, int, int] | None = None
+        self._foot_geom_ids = {
+            name: self._find_geom_id(name) for name in ("FL", "FR", "RL", "RR")
+        }
+        self._front_foot_geom_ids = {
+            geom_id
+            for name, geom_id in self._foot_geom_ids.items()
+            if geom_id is not None and name in ("FL", "FR")
+        }
+        self._rear_foot_geom_ids = {
+            geom_id
+            for name, geom_id in self._foot_geom_ids.items()
+            if geom_id is not None and name in ("RL", "RR")
+        }
+        self._all_foot_geom_ids = {
+            geom_id for geom_id in self._foot_geom_ids.values() if geom_id is not None
+        }
 
         # Build observation space dynamically from an initial observation vector.
         observation = self._get_obs()
@@ -158,11 +189,15 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
 
     @property
     def contact_cost(self) -> float:
-        """Penalty term that discourages high contact forces."""
+        """Penalty term that discourages non-foot ground contacts."""
 
         if self._contact_cost_weight == 0.0:
             return 0.0
-        return self._contact_cost_weight * float(np.sum(np.square(self.contact_forces)))
+        summary = self._last_contact_summary
+        if summary is None:
+            summary = self._ground_contact_summary()
+        _, _, nonfoot_force, _, _, _ = summary
+        return self._contact_cost_weight * nonfoot_force
 
     @property
     def is_healthy(self) -> bool:
@@ -206,7 +241,6 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             )
         healthy_reward = self.healthy_reward * speed_fraction
         ctrl_cost = self.control_cost(action)
-        contact_cost = self.contact_cost
         roll, pitch = self._roll_pitch()
         lateral_cost = self._lateral_velocity_weight * float(np.square(y_velocity))
         orientation_cost = self._orientation_cost_weight * float(roll * roll + pitch * pitch)
@@ -225,12 +259,46 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
                 np.sum(np.square(action_delta))
             )
 
+        (
+            front_contact_force,
+            rear_contact_force,
+            nonfoot_contact_force,
+            front_contact_count,
+            rear_contact_count,
+            nonfoot_contact_count,
+        ) = self._ground_contact_summary()
+        self._last_contact_summary = (
+            front_contact_force,
+            rear_contact_force,
+            nonfoot_contact_force,
+            front_contact_count,
+            rear_contact_count,
+            nonfoot_contact_count,
+        )
+        foot_contact_cost = self._foot_contact_cost_weight * (
+            front_contact_force + rear_contact_force
+        )
+        nonfoot_contact_cost = self._contact_cost_weight * nonfoot_contact_force
+        rear_contact_reward = 0.0
+        if self._rear_contact_reward_weight > 0.0:
+            rear_contact_reward = (
+                self._rear_contact_reward_weight * rear_contact_force * speed_fraction
+            )
+        contact_balance_penalty = 0.0
+        if self._contact_balance_weight > 0.0:
+            contact_balance_penalty = self._contact_balance_weight * float(
+                (front_contact_force - rear_contact_force) ** 2
+            )
+
         observation = self._get_obs()
         reward = (
             forward_reward
             + healthy_reward
+            + rear_contact_reward
             - ctrl_cost
-            - contact_cost
+            - foot_contact_cost
+            - nonfoot_contact_cost
+            - contact_balance_penalty
             - lateral_cost
             - orientation_cost
             - low_speed_penalty
@@ -247,7 +315,11 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_forward": forward_reward,
             "reward_survive": healthy_reward,
             "reward_ctrl": -ctrl_cost,
-            "reward_contact": -contact_cost,
+            "reward_contact": -(foot_contact_cost + nonfoot_contact_cost + contact_balance_penalty),
+            "reward_contact_foot": -foot_contact_cost,
+            "reward_contact_nonfoot": -nonfoot_contact_cost,
+            "reward_contact_balance": -contact_balance_penalty,
+            "reward_rear_contact": rear_contact_reward,
             "reward_lateral": -lateral_cost,
             "reward_orientation": -orientation_cost,
             "reward_low_speed": -low_speed_penalty,
@@ -255,7 +327,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_action_rate": -action_rate_penalty,
             "reward_fall": -fall_penalty,
             "ctrl_cost": ctrl_cost,
-            "contact_cost": contact_cost,
+            "contact_cost": nonfoot_contact_cost,
+            "foot_contact_cost": foot_contact_cost,
+            "contact_balance_penalty": contact_balance_penalty,
             "lateral_cost": lateral_cost,
             "orientation_cost": orientation_cost,
             "low_speed_penalty": low_speed_penalty,
@@ -263,6 +337,12 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "action_rate_penalty": action_rate_penalty,
             "speed_fraction": speed_fraction,
             "fall_penalty": fall_penalty,
+            "front_contact_force": front_contact_force,
+            "rear_contact_force": rear_contact_force,
+            "nonfoot_contact_force": nonfoot_contact_force,
+            "front_contact_count": front_contact_count,
+            "rear_contact_count": rear_contact_count,
+            "nonfoot_contact_count": nonfoot_contact_count,
             "is_healthy": self.is_healthy,
             "base_height": float(self.data.qpos[2]),
             "base_roll": float(roll),
@@ -310,6 +390,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         )
         self.set_state(qpos, qvel)
         self._last_action = np.zeros(self.model.nu, dtype=np.float64)
+        self._last_contact_summary = None
         return self._get_obs()
 
     @staticmethod
@@ -359,6 +440,63 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
 
         actuator_scale = self.np_random.uniform(*self._actuator_strength_scale_range)
         self.model.actuator_gear[:] = self._base_actuator_gear * actuator_scale
+
+    def _ground_contact_summary(self) -> tuple[float, float, float, int, int, int]:
+        """Summarize ground contacts by front/rear foot and non-foot geoms."""
+
+        if self._ground_geom_id is None or self.data.ncon == 0:
+            return 0.0, 0.0, 0.0, 0, 0, 0
+
+        front_force = 0.0
+        rear_force = 0.0
+        nonfoot_force = 0.0
+        foot_geoms_in_contact: set[int] = set()
+        nonfoot_geoms_in_contact: set[int] = set()
+
+        for contact_index in range(self.data.ncon):
+            contact = self.data.contact[contact_index]
+            geom1 = int(contact.geom1)
+            geom2 = int(contact.geom2)
+            if geom1 == self._ground_geom_id:
+                other = geom2
+            elif geom2 == self._ground_geom_id:
+                other = geom1
+            else:
+                continue
+
+            mujoco.mj_contactForce(
+                self.model, self.data, contact_index, self._contact_force_buffer
+            )
+            normal_force = abs(float(self._contact_force_buffer[0]))
+            if self._contact_force_clip > 0.0:
+                normal_force = min(normal_force, self._contact_force_clip)
+
+            if other in self._all_foot_geom_ids:
+                foot_geoms_in_contact.add(other)
+                if other in self._rear_foot_geom_ids:
+                    rear_force += normal_force
+                else:
+                    front_force += normal_force
+            else:
+                nonfoot_geoms_in_contact.add(other)
+                nonfoot_force += normal_force
+
+        front_contact_count = len(
+            self._front_foot_geom_ids.intersection(foot_geoms_in_contact)
+        )
+        rear_contact_count = len(
+            self._rear_foot_geom_ids.intersection(foot_geoms_in_contact)
+        )
+        nonfoot_contact_count = len(nonfoot_geoms_in_contact)
+
+        return (
+            front_force,
+            rear_force,
+            nonfoot_force,
+            front_contact_count,
+            rear_contact_count,
+            nonfoot_contact_count,
+        )
 
 
 def register_unitree_go2_env(
