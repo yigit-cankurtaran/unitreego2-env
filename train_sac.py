@@ -65,6 +65,12 @@ def main() -> None:
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--tensorboard-log", type=Path, default=None)
+    parser.add_argument(
+        "--replay-buffer-path",
+        type=Path,
+        default=None,
+        help="Optional path to load/save the replay buffer for resume stability.",
+    )
     parser.add_argument("--checkpoint-dir", type=Path, default=None)
     parser.add_argument("--checkpoint-freq", type=int, default=50_000)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
@@ -109,6 +115,8 @@ def main() -> None:
             device="auto",
             tensorboard_log=str(tensorboard_log),
         )
+        if args.replay_buffer_path is not None and args.replay_buffer_path.exists():
+            model.load_replay_buffer(str(args.replay_buffer_path))
     else:
         model = SAC(
             "MlpPolicy",
@@ -140,6 +148,10 @@ def main() -> None:
         )
 
     model.learn(total_timesteps=args.total_timesteps, callback=callback)
+
+    if args.replay_buffer_path is not None:
+        args.replay_buffer_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save_replay_buffer(str(args.replay_buffer_path))
 
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model.save(str(model_path))

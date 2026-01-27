@@ -32,6 +32,12 @@ def main() -> None:
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--drive-dir", type=Path, default=Path("/content/drive/MyDrive/unitreego2"))
+    parser.add_argument(
+        "--replay-buffer-path",
+        type=Path,
+        default=None,
+        help="Path to load/save replay buffer (defaults to Drive if available).",
+    )
     parser.add_argument("--n-envs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-episode-steps", type=int, default=1000)
@@ -95,6 +101,9 @@ def main() -> None:
     checkpoint_dir = args.checkpoint_dir
     if checkpoint_dir is None and args.drive_dir.exists():
         checkpoint_dir = args.drive_dir / "checkpoints"
+    replay_buffer_path = args.replay_buffer_path
+    if replay_buffer_path is None and args.drive_dir.exists():
+        replay_buffer_path = args.drive_dir / "replay_buffers" / "sac_replay_buffer.pkl"
     base_cmd = (
         f"python {train_script}"
         f" --n-envs {args.n_envs}"
@@ -104,6 +113,8 @@ def main() -> None:
     )
     if args.resume_path is not None:
         base_cmd += f" --resume-path {args.resume_path}"
+    if replay_buffer_path is not None:
+        base_cmd += f" --replay-buffer-path {replay_buffer_path}"
     if checkpoint_dir is not None and args.checkpoint_freq > 0:
         base_cmd += f" --checkpoint-dir {checkpoint_dir}"
         base_cmd += f" --checkpoint-freq {args.checkpoint_freq}"
