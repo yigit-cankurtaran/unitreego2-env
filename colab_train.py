@@ -68,6 +68,18 @@ def main() -> None:
         default=12.0,
         help="Runtime budget used to estimate max timesteps.",
     )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        default=None,
+        help="Directory for periodic checkpoints (defaults to Drive if available).",
+    )
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=50_000,
+        help="Save a checkpoint every N timesteps (0 to disable).",
+    )
     args = parser.parse_args()
 
     repo_dir = Path(__file__).resolve().parent
@@ -79,6 +91,9 @@ def main() -> None:
         _run("pip -q install 'gymnasium[mujoco]' stable-baselines3 matplotlib tensorboard")
 
     train_script = repo_dir / "train_sac.py"
+    checkpoint_dir = args.checkpoint_dir
+    if checkpoint_dir is None and args.drive_dir.exists():
+        checkpoint_dir = args.drive_dir / "checkpoints"
     base_cmd = (
         f"python {train_script}"
         f" --n-envs {args.n_envs}"
@@ -86,6 +101,9 @@ def main() -> None:
         f" --max-episode-steps {args.max_episode_steps}"
         f" --vec-env {args.vec_env}"
     )
+    if checkpoint_dir is not None and args.checkpoint_freq > 0:
+        base_cmd += f" --checkpoint-dir {checkpoint_dir}"
+        base_cmd += f" --checkpoint-freq {args.checkpoint_freq}"
 
     def _train_cmd(total_timesteps: int, run_id: int | None) -> str:
         cmd = f"{base_cmd} --total-timesteps {total_timesteps}"
