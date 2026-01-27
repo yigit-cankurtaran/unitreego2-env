@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--requirements", type=Path, default=Path("requirements_local.txt"))
     parser.add_argument("--total-timesteps", type=int, default=200_000)
     parser.add_argument("--run-id", type=int, default=None)
+    parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--n-envs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-episode-steps", type=int, default=1000)
@@ -85,6 +86,8 @@ def main() -> None:
         f" --seed {args.seed}"
         f" --max-episode-steps {args.max_episode_steps}"
     )
+    if args.resume_path is not None:
+        base_cmd += f" --resume-path {args.resume_path}"
 
     def _train_cmd(total_timesteps: int, run_id: int | None) -> str:
         cmd = f"{base_cmd} --total-timesteps {total_timesteps}"

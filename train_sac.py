@@ -46,6 +46,7 @@ def main() -> None:
     parser.add_argument("--n-envs", type=int, default=4)
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--model-path", type=Path, default=None)
+    parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--tensorboard-log", type=Path, default=None)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--buffer-size", type=int, default=1_000_000)
@@ -79,25 +80,35 @@ def main() -> None:
         else float(args.target_entropy)
     )
 
-    model = SAC(
-        "MlpPolicy",
-        env,
-        verbose=1,
-        tensorboard_log=str(tensorboard_log),
-        device="auto",
-        seed=args.seed,
-        learning_rate=args.learning_rate,
-        buffer_size=args.buffer_size,
-        batch_size=args.batch_size,
-        learning_starts=args.learning_starts,
-        train_freq=(args.train_freq, "step"),
-        gradient_steps=args.gradient_steps,
-        gamma=args.gamma,
-        tau=args.tau,
-        ent_coef=ent_coef,
-        target_entropy=target_entropy,
-        policy_kwargs={"net_arch": [256, 256]},
-    )
+    if args.resume_path is not None:
+        if not args.resume_path.exists():
+            raise FileNotFoundError(f"Resume model not found: {args.resume_path}")
+        model = SAC.load(
+            str(args.resume_path),
+            env=env,
+            device="auto",
+            tensorboard_log=str(tensorboard_log),
+        )
+    else:
+        model = SAC(
+            "MlpPolicy",
+            env,
+            verbose=1,
+            tensorboard_log=str(tensorboard_log),
+            device="auto",
+            seed=args.seed,
+            learning_rate=args.learning_rate,
+            buffer_size=args.buffer_size,
+            batch_size=args.batch_size,
+            learning_starts=args.learning_starts,
+            train_freq=(args.train_freq, "step"),
+            gradient_steps=args.gradient_steps,
+            gamma=args.gamma,
+            tau=args.tau,
+            ent_coef=ent_coef,
+            target_entropy=target_entropy,
+            policy_kwargs={"net_arch": [256, 256]},
+        )
 
     model.learn(total_timesteps=args.total_timesteps)
 
