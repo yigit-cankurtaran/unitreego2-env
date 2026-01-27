@@ -9,3 +9,5 @@ __pycache__/
 logs/
 models/
 training_metrics.png
+logs.zip
+model.zip
