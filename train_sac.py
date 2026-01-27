@@ -12,7 +12,12 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from custom_mujoco_env import make_unitree_go2_env
 
 
-def make_env(seed: int, max_episode_steps: int | None, n_envs: int) -> DummyVecEnv:
+def make_env(
+    seed: int,
+    max_episode_steps: int | None,
+    n_envs: int,
+    vec_env: str,
+) -> DummyVecEnv:
     def _init():
         env = make_unitree_go2_env(
             render=False,
@@ -22,7 +27,12 @@ def make_env(seed: int, max_episode_steps: int | None, n_envs: int) -> DummyVecE
         env = Monitor(env)
         return env
 
-    vec_env_cls = SubprocVecEnv if n_envs > 1 else DummyVecEnv
+    if vec_env == "auto":
+        vec_env_cls = SubprocVecEnv if n_envs > 1 else DummyVecEnv
+    elif vec_env == "subproc":
+        vec_env_cls = SubprocVecEnv
+    else:
+        vec_env_cls = DummyVecEnv
     return make_vec_env(_init, n_envs=n_envs, seed=seed, vec_env_cls=vec_env_cls)
 
 
@@ -44,6 +54,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-episode-steps", type=int, default=1000)
     parser.add_argument("--n-envs", type=int, default=4)
+    parser.add_argument(
+        "--vec-env",
+        choices=["auto", "subproc", "dummy"],
+        default="auto",
+        help="Vectorized env backend. Use dummy in environments where subprocesses fail.",
+    )
     parser.add_argument("--run-id", type=int, default=None)
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--resume-path", type=Path, default=None)
@@ -71,6 +87,7 @@ def main() -> None:
         seed=args.seed,
         max_episode_steps=args.max_episode_steps,
         n_envs=args.n_envs,
+        vec_env=args.vec_env,
     )
 
     ent_coef = args.ent_coef if args.ent_coef.startswith("auto") else float(args.ent_coef)

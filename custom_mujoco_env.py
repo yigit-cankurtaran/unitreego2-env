@@ -374,13 +374,14 @@ def register_unitree_go2_env(
     if env_id in registry:
         return
 
+    env_kwargs = env_kwargs or {}
     register(
         id=env_id,
         entry_point=UnitreeGo2Env,
         max_episode_steps=max_episode_steps,
         disable_env_checker=disable_env_checker,
         additional_wrappers=tuple(additional_wrappers or ()),
-        kwargs=env_kwargs or None,
+        kwargs=env_kwargs,
     )
 
 
