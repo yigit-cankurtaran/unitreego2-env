@@ -1,4 +1,6 @@
 import numpy as np
+import pytest
+import mujoco
 from gymnasium.wrappers import RecordEpisodeStatistics, TimeLimit
 
 from custom_mujoco_env import make_unitree_go2_env
@@ -52,5 +54,21 @@ def test_domain_randomization_scales_friction():
         scaled = base_env.model.geom_friction[base_env._ground_geom_id, :]
         expected = base[base_env._ground_geom_id, :] * 0.5
         assert np.allclose(scaled, expected)
+    finally:
+        env.close()
+
+
+def test_reset_uses_home_keyframe_when_available():
+    env = make_unitree_go2_env(render=False)
+    try:
+        base_env = env.unwrapped
+        key_id = mujoco.mj_name2id(base_env.model, mujoco.mjtObj.mjOBJ_KEY, "home")
+        if key_id == -1:
+            pytest.skip("home keyframe not found in model")
+        env.reset()
+        qpos = base_env.data.qpos.copy()
+        key_qpos = base_env.model.key_qpos[int(key_id)].copy()
+        joint_diff = np.abs(qpos[7:] - key_qpos[7:])
+        assert joint_diff.max() <= base_env._reset_noise_scale + 1e-6
     finally:
         env.close()

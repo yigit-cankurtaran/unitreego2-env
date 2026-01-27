@@ -40,11 +40,14 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         contact_cost_weight: float = 2e-4,
         foot_contact_cost_weight: float = 5e-5,
         rear_contact_reward_weight: float = 0.1,
+        rear_contact_ratio_reward_weight: float = 0.2,
         contact_balance_weight: float = 0.05,
+        support_balance_reward_weight: float = 0.3,
         contact_force_clip: float = 1.0,
         healthy_reward: float = 0.5,
         low_speed_threshold: float = 0.3,
         low_speed_penalty_weight: float = 2.5,
+        low_speed_rear_relief: float = 0.5,
         idle_speed_threshold: float = 0.1,
         idle_penalty_weight: float = 5.0,
         action_rate_penalty_weight: float = 1e-4,
@@ -77,11 +80,14 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             contact_cost_weight,
             foot_contact_cost_weight,
             rear_contact_reward_weight,
+            rear_contact_ratio_reward_weight,
             contact_balance_weight,
+            support_balance_reward_weight,
             contact_force_clip,
             healthy_reward,
             low_speed_threshold,
             low_speed_penalty_weight,
+            low_speed_rear_relief,
             idle_speed_threshold,
             idle_penalty_weight,
             action_rate_penalty_weight,
@@ -106,11 +112,14 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._contact_cost_weight = contact_cost_weight
         self._foot_contact_cost_weight = foot_contact_cost_weight
         self._rear_contact_reward_weight = rear_contact_reward_weight
+        self._rear_contact_ratio_reward_weight = rear_contact_ratio_reward_weight
         self._contact_balance_weight = contact_balance_weight
+        self._support_balance_reward_weight = support_balance_reward_weight
         self._contact_force_clip = contact_force_clip
         self._healthy_reward = healthy_reward
         self._low_speed_threshold = low_speed_threshold
         self._low_speed_penalty_weight = low_speed_penalty_weight
+        self._low_speed_rear_relief = low_speed_rear_relief
         self._idle_speed_threshold = idle_speed_threshold
         self._idle_penalty_weight = idle_penalty_weight
         self._action_rate_penalty_weight = action_rate_penalty_weight
@@ -142,6 +151,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._last_action = np.zeros(self.model.nu, dtype=np.float64)
         self._contact_force_buffer = np.zeros(6, dtype=np.float64)
         self._last_contact_summary: tuple[float, float, float, int, int, int] | None = None
+        home_key_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "home")
+        self._home_key_id = None if home_key_id == -1 else int(home_key_id)
         self._foot_geom_ids = {
             name: self._find_geom_id(name) for name in ("FL", "FR", "RL", "RR")
         }
@@ -244,11 +255,6 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         roll, pitch = self._roll_pitch()
         lateral_cost = self._lateral_velocity_weight * float(np.square(y_velocity))
         orientation_cost = self._orientation_cost_weight * float(roll * roll + pitch * pitch)
-        low_speed_penalty = 0.0
-        if self._low_speed_penalty_weight > 0.0 and x_velocity < self._low_speed_threshold:
-            low_speed_penalty = self._low_speed_penalty_weight * float(
-                self._low_speed_threshold - x_velocity
-            )
         idle_penalty = 0.0
         if self._idle_penalty_weight > 0.0 and forward_speed < self._idle_speed_threshold:
             idle_penalty = self._idle_penalty_weight * self.dt
@@ -279,6 +285,15 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             front_contact_force + rear_contact_force
         )
         nonfoot_contact_cost = self._contact_cost_weight * nonfoot_contact_force
+        total_foot_force = front_contact_force + rear_contact_force
+        rear_contact_ratio = 0.0
+        support_balance_reward = 0.0
+        rear_ratio_reward = 0.0
+        if total_foot_force > 1e-6:
+            rear_contact_ratio = rear_contact_force / total_foot_force
+            balance_score = 1.0 - abs(front_contact_force - rear_contact_force) / total_foot_force
+            support_balance_reward = self._support_balance_reward_weight * balance_score
+            rear_ratio_reward = self._rear_contact_ratio_reward_weight * rear_contact_ratio
         rear_contact_reward = 0.0
         if self._rear_contact_reward_weight > 0.0:
             rear_contact_reward = (
@@ -289,11 +304,21 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             contact_balance_penalty = self._contact_balance_weight * float(
                 (front_contact_force - rear_contact_force) ** 2
             )
+        low_speed_penalty = 0.0
+        if self._low_speed_penalty_weight > 0.0 and x_velocity < self._low_speed_threshold:
+            low_speed_penalty = self._low_speed_penalty_weight * float(
+                self._low_speed_threshold - x_velocity
+            )
+            if self._low_speed_rear_relief > 0.0 and forward_speed >= self._idle_speed_threshold:
+                relief = max(0.0, min(1.0, self._low_speed_rear_relief * rear_contact_ratio))
+                low_speed_penalty *= 1.0 - relief
 
         observation = self._get_obs()
         reward = (
             forward_reward
             + healthy_reward
+            + support_balance_reward
+            + rear_ratio_reward
             + rear_contact_reward
             - ctrl_cost
             - foot_contact_cost
@@ -320,6 +345,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_contact_nonfoot": -nonfoot_contact_cost,
             "reward_contact_balance": -contact_balance_penalty,
             "reward_rear_contact": rear_contact_reward,
+            "reward_support_balance": support_balance_reward,
+            "reward_rear_ratio": rear_ratio_reward,
             "reward_lateral": -lateral_cost,
             "reward_orientation": -orientation_cost,
             "reward_low_speed": -low_speed_penalty,
@@ -343,6 +370,8 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "front_contact_count": front_contact_count,
             "rear_contact_count": rear_contact_count,
             "nonfoot_contact_count": nonfoot_contact_count,
+            "rear_contact_ratio": rear_contact_ratio,
+            "total_foot_force": total_foot_force,
             "is_healthy": self.is_healthy,
             "base_height": float(self.data.qpos[2]),
             "base_roll": float(roll),
@@ -382,12 +411,14 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         noise_low = -self._reset_noise_scale
         noise_high = self._reset_noise_scale
 
-        qpos = self.init_qpos + self.np_random.uniform(
-            low=noise_low, high=noise_high, size=self.model.nq
-        )
-        qvel = self.init_qvel + self.np_random.uniform(
-            low=noise_low, high=noise_high, size=self.model.nv
-        )
+        qpos = self.init_qpos.copy()
+        qvel = self.init_qvel.copy()
+        if self._home_key_id is not None:
+            qpos = self.model.key_qpos[self._home_key_id].copy()
+            if self.model.key_qvel.size:
+                qvel = self.model.key_qvel[self._home_key_id].copy()
+        qpos = qpos + self.np_random.uniform(low=noise_low, high=noise_high, size=self.model.nq)
+        qvel = qvel + self.np_random.uniform(low=noise_low, high=noise_high, size=self.model.nv)
         self.set_state(qpos, qvel)
         self._last_action = np.zeros(self.model.nu, dtype=np.float64)
         self._last_contact_summary = None

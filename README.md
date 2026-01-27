@@ -53,11 +53,14 @@ The current reward is tuned to discourage “stand still and survive” behavior
 - Forward reward: `forward_reward_weight * max(x_velocity, 0)`.
 - Survival reward: scaled by forward speed (`healthy_reward * clip(speed / low_speed_threshold, 0, 1)`), so standing still does not pay.
 - Low-speed penalty: applied when `x_velocity < low_speed_threshold`.
+- Support balance reward: encourages front/rear contact force symmetry (scaled by `support_balance_reward_weight`).
+- Rear contact ratio reward: encourages hind-foot engagement even at lower speeds (`rear_contact_ratio_reward_weight`).
+- Low-speed penalty relief: reduced when rear contact ratio is higher (`low_speed_rear_relief`).
 - Idle penalty: per-second penalty when `forward_speed < idle_speed_threshold` (scaled by `dt`).
 - Action-rate penalty: discourages jitter by penalizing changes in action from one step to the next.
 - Orientation/lateral/control/contact penalties and a fall penalty remain.
 
-All weights/thresholds are configurable via `UnitreeGo2Env` init args (`idle_speed_threshold`, `idle_penalty_weight`, `action_rate_penalty_weight`, etc.).
+All weights/thresholds are configurable via `UnitreeGo2Env` init args (`support_balance_reward_weight`, `rear_contact_ratio_reward_weight`, `low_speed_rear_relief`, `idle_speed_threshold`, `idle_penalty_weight`, `action_rate_penalty_weight`, etc.).
 
 ## Training defaults (SAC)
 
