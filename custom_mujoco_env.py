@@ -37,12 +37,13 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         orientation_cost_weight: float = 0.2,
         ctrl_cost_weight: float = 1e-3,
         contact_cost_weight: float = 2e-4,
-        healthy_reward: float = 0.8,
-        low_speed_threshold: float = 0.2,
-        low_speed_penalty_weight: float = 0.0,
-        fall_penalty: float = 5.0,
+        healthy_reward: float = 0.5,
+        low_speed_threshold: float = 0.3,
+        low_speed_penalty_weight: float = 2.5,
+        fall_penalty: float = 10.0,
         terminate_when_unhealthy: bool = True,
         healthy_z_range: tuple[float, float] = (0.22, 0.5),
+        healthy_orientation_range: tuple[float, float] = (-0.6, 0.6),
         contact_force_range: tuple[float, float] = (-1.0, 1.0),
         reset_noise_scale: float = 0.01,
         exclude_current_positions_from_observation: bool = True,
@@ -72,6 +73,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             fall_penalty,
             terminate_when_unhealthy,
             healthy_z_range,
+            healthy_orientation_range,
             contact_force_range,
             reset_noise_scale,
             exclude_current_positions_from_observation,
@@ -93,6 +95,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._fall_penalty = fall_penalty
         self._terminate_when_unhealthy = terminate_when_unhealthy
         self._healthy_z_range = healthy_z_range
+        self._healthy_orientation_range = healthy_orientation_range
         self._contact_force_range = contact_force_range
         self._reset_noise_scale = reset_noise_scale
         self._exclude_current_positions_from_observation = (
@@ -158,9 +161,12 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         state = self.state_vector()
         base_height = float(self.data.qpos[2])
         min_z, max_z = self._healthy_z_range
+        roll, pitch = self._roll_pitch()
+        min_angle, max_angle = self._healthy_orientation_range
         is_finite = np.isfinite(state).all()
         in_bounds = min_z <= base_height <= max_z
-        return bool(is_finite and in_bounds)
+        upright = (min_angle <= roll <= max_angle) and (min_angle <= pitch <= max_angle)
+        return bool(is_finite and in_bounds and upright)
 
     @property
     def terminated(self) -> bool:
@@ -231,6 +237,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "y_position": float(xy_position_after[1]),
             "x_velocity": float(x_velocity),
             "y_velocity": float(y_velocity),
+            "upright": self.is_healthy,
         }
 
         if self.render_mode == "human":
