@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 
 from stable_baselines3 import SAC
-from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import set_random_seed
@@ -65,14 +64,6 @@ def main() -> None:
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--tensorboard-log", type=Path, default=None)
-    parser.add_argument(
-        "--replay-buffer-path",
-        type=Path,
-        default=None,
-        help="Optional path to load/save the replay buffer for resume stability.",
-    )
-    parser.add_argument("--checkpoint-dir", type=Path, default=None)
-    parser.add_argument("--checkpoint-freq", type=int, default=50_000)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--buffer-size", type=int, default=1_000_000)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -115,8 +106,6 @@ def main() -> None:
             device="auto",
             tensorboard_log=str(tensorboard_log),
         )
-        if args.replay_buffer_path is not None and args.replay_buffer_path.exists():
-            model.load_replay_buffer(str(args.replay_buffer_path))
     else:
         model = SAC(
             "MlpPolicy",
@@ -138,20 +127,7 @@ def main() -> None:
             policy_kwargs={"net_arch": [256, 256]},
         )
 
-    callback = None
-    if args.checkpoint_dir is not None and args.checkpoint_freq > 0:
-        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        callback = CheckpointCallback(
-            save_freq=args.checkpoint_freq,
-            save_path=str(args.checkpoint_dir),
-            name_prefix="sac",
-        )
-
-    model.learn(total_timesteps=args.total_timesteps, callback=callback)
-
-    if args.replay_buffer_path is not None:
-        args.replay_buffer_path.parent.mkdir(parents=True, exist_ok=True)
-        model.save_replay_buffer(str(args.replay_buffer_path))
+    model.learn(total_timesteps=args.total_timesteps)
 
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model.save(str(model_path))
