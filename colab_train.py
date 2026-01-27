@@ -30,6 +30,7 @@ def main() -> None:
     )
     parser.add_argument("--total-timesteps", type=int, default=200_000)
     parser.add_argument("--run-id", type=int, default=None)
+    parser.add_argument("--resume-path", type=Path, default=None)
     parser.add_argument("--drive-dir", type=Path, default=Path("/content/drive/MyDrive/unitreego2"))
     parser.add_argument("--n-envs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
@@ -101,6 +102,8 @@ def main() -> None:
         f" --max-episode-steps {args.max_episode_steps}"
         f" --vec-env {args.vec_env}"
     )
+    if args.resume_path is not None:
+        base_cmd += f" --resume-path {args.resume_path}"
     if checkpoint_dir is not None and args.checkpoint_freq > 0:
         base_cmd += f" --checkpoint-dir {checkpoint_dir}"
         base_cmd += f" --checkpoint-freq {args.checkpoint_freq}"
