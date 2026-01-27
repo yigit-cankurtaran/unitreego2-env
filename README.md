@@ -70,6 +70,42 @@ All weights/thresholds are configurable via `UnitreeGo2Env` init args (`idle_spe
 
 For meaningful locomotion, expect to train for millions of timesteps (e.g., 3–10M).
 
+## Resume training & checkpoints
+
+- Resume from a saved policy (continues timesteps/logging by default):
+
+```bash
+python train_sac.py --resume-path models/SAC_1/sac_unitree_go2.zip --total-timesteps 1_000_000
+```
+
+- If you resume from a checkpoint in `models/SAC_<id>/checkpoints/`, the updated model is saved back to
+  `models/SAC_<id>/sac_unitree_go2.zip` unless you pass `--model-path`.
+- Replay buffer is saved to `models/SAC_<id>/replay_buffer.pkl` by default and is auto-loaded on resume when present.
+  Use `--no-save-replay-buffer` or `--no-load-replay-buffer` to disable.
+- Optional VecNormalize support (recommended for longer runs):
+
+```bash
+python train_sac.py --vecnormalize --normalize-reward --total-timesteps 3_000_000
+```
+
+This saves `vecnormalize.pkl` alongside the model and auto-loads it when resuming.
+
+- Periodic checkpoints (model + replay buffer + VecNormalize):
+
+```bash
+python train_sac.py --checkpoint-freq 200000
+```
+
+Checkpoints land in `models/SAC_<id>/checkpoints/`.
+
+## Evaluating with VecNormalize
+
+If you trained with VecNormalize, pass the stats file when evaluating:
+
+```bash
+python evaluate_sac.py --run-id 1 --vecnormalize-path models/SAC_1/vecnormalize.pkl
+```
+
 ## Current limitations
 
 - The environment is not stabilized for training yet.

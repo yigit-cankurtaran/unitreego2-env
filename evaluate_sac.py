@@ -5,6 +5,8 @@ from pathlib import Path
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from custom_mujoco_env import make_unitree_go2_env
 
@@ -16,6 +18,12 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--max-episode-steps", type=int, default=1000)
     parser.add_argument("--deterministic", action="store_true")
+    parser.add_argument("--vecnormalize-path", type=Path, default=None)
+    parser.add_argument(
+        "--normalize-reward",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     args = parser.parse_args()
 
     if args.model_path is None:
@@ -25,11 +33,22 @@ def main() -> None:
     else:
         model_path = args.model_path
 
-    env = make_unitree_go2_env(
-        render=True,
-        max_episode_steps=args.max_episode_steps,
-        record_episode_statistics=False,
-    )
+    vecnormalize_path = args.vecnormalize_path
+    if vecnormalize_path is None and args.run_id is not None:
+        vecnormalize_path = Path("models") / f"SAC_{args.run_id}" / "vecnormalize.pkl"
+
+    def _init():
+        return make_unitree_go2_env(
+            render=True,
+            max_episode_steps=args.max_episode_steps,
+            record_episode_statistics=False,
+        )
+
+    env = make_vec_env(_init, n_envs=1, vec_env_cls=DummyVecEnv)
+    if vecnormalize_path is not None and vecnormalize_path.exists():
+        env = VecNormalize.load(str(vecnormalize_path), env)
+        env.training = False
+        env.norm_reward = args.normalize_reward
 
     model = SAC.load(str(model_path), env=env)
 
