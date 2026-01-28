@@ -36,6 +36,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         forward_reward_weight: float = 2.0,
         lateral_velocity_weight: float = 0.05,
         orientation_cost_weight: float = 0.2,
+        lean_penalty_weight: float = 0.15,
         ctrl_cost_weight: float = 1e-3,
         contact_cost_weight: float = 2e-4,
         foot_contact_cost_weight: float = 5e-5,
@@ -76,6 +77,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             forward_reward_weight,
             lateral_velocity_weight,
             orientation_cost_weight,
+            lean_penalty_weight,
             ctrl_cost_weight,
             contact_cost_weight,
             foot_contact_cost_weight,
@@ -108,6 +110,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         self._forward_reward_weight = forward_reward_weight
         self._lateral_velocity_weight = lateral_velocity_weight
         self._orientation_cost_weight = orientation_cost_weight
+        self._lean_penalty_weight = lean_penalty_weight
         self._ctrl_cost_weight = ctrl_cost_weight
         self._contact_cost_weight = contact_cost_weight
         self._foot_contact_cost_weight = foot_contact_cost_weight
@@ -255,6 +258,9 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
         roll, pitch = self._roll_pitch()
         lateral_cost = self._lateral_velocity_weight * float(np.square(y_velocity))
         orientation_cost = self._orientation_cost_weight * float(roll * roll + pitch * pitch)
+        lean_penalty = 0.0
+        if self._lean_penalty_weight > 0.0:
+            lean_penalty = self._lean_penalty_weight * float(roll * roll)
         idle_penalty = 0.0
         if self._idle_penalty_weight > 0.0 and forward_speed < self._idle_speed_threshold:
             idle_penalty = self._idle_penalty_weight * self.dt
@@ -326,6 +332,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             - contact_balance_penalty
             - lateral_cost
             - orientation_cost
+            - lean_penalty
             - low_speed_penalty
             - idle_penalty
             - action_rate_penalty
@@ -349,6 +356,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "reward_rear_ratio": rear_ratio_reward,
             "reward_lateral": -lateral_cost,
             "reward_orientation": -orientation_cost,
+            "reward_lean": -lean_penalty,
             "reward_low_speed": -low_speed_penalty,
             "reward_idle": -idle_penalty,
             "reward_action_rate": -action_rate_penalty,
@@ -358,6 +366,7 @@ class UnitreeGo2Env(MujocoEnv, utils.EzPickle):
             "foot_contact_cost": foot_contact_cost,
             "contact_balance_penalty": contact_balance_penalty,
             "lateral_cost": lateral_cost,
+            "lean_penalty": lean_penalty,
             "orientation_cost": orientation_cost,
             "low_speed_penalty": low_speed_penalty,
             "idle_penalty": idle_penalty,
