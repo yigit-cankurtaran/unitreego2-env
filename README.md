@@ -48,17 +48,24 @@ for _ in range(1000):
 
 ## Reward shaping (locomotion-focused)
 
-The current reward is tuned to discourage “stand still and survive” behaviors while still rewarding forward motion:
+The reward is aimed at stable forward locomotion with balanced support: move forward, stay upright, avoid lateral drift/roll, keep smooth actions, and discourage idle or collapsed postures while still allowing recovery steps. Contact shaping encourages symmetric front/rear loading and avoids dragging non-foot parts.
+
+Key terms:
 
 - Forward reward: `forward_reward_weight * max(x_velocity, 0)`.
 - Survival reward: scaled by forward speed (`healthy_reward * clip(speed / low_speed_threshold, 0, 1)`), so standing still does not pay.
 - Low-speed penalty: applied when `x_velocity < low_speed_threshold`.
 - Support balance reward: encourages front/rear contact force symmetry (scaled by `support_balance_reward_weight`).
 - Rear contact ratio reward: encourages hind-foot engagement even at lower speeds (`rear_contact_ratio_reward_weight`).
-- Low-speed penalty relief: reduced when rear contact ratio is higher (`low_speed_rear_relief`).
-- Idle penalty: per-second penalty when `forward_speed < idle_speed_threshold` (scaled by `dt`).
-- Action-rate penalty: discourages jitter by penalizing changes in action from one step to the next.
-- Orientation/lateral/control/contact penalties and a fall penalty remain.
+- Rear contact force reward: extra reward proportional to rear contact force at low speeds (`rear_contact_reward_weight * rear_contact_force * speed_fraction`).
+- Low-speed penalty relief: reduced when rear contact ratio is higher (`low_speed_rear_relief`), but only when `forward_speed >= idle_speed_threshold`.
+- Idle penalty: per-step penalty when `forward_speed < idle_speed_threshold` (scaled by `dt`).
+- Action-rate penalty: discourages jitter by penalizing action deltas between steps.
+- Lateral velocity penalty: `lateral_velocity_weight * y_velocity^2`.
+- Orientation penalty: `orientation_cost_weight * (roll^2 + pitch^2)` plus a roll-only lean penalty (`lean_penalty_weight * roll^2`).
+- Contact penalties: non-foot contacts (`contact_cost_weight * nonfoot_force`), plus foot-force cost (`foot_contact_cost_weight * (front + rear)`), plus a front/rear imbalance penalty (`contact_balance_weight * (front - rear)^2`).
+- Control penalty: `ctrl_cost_weight * sum(action^2)`.
+- Fall penalty: `fall_penalty` subtracted on termination when unhealthy.
 
 All weights/thresholds are configurable via `UnitreeGo2Env` init args (`support_balance_reward_weight`, `rear_contact_ratio_reward_weight`, `low_speed_rear_relief`, `idle_speed_threshold`, `idle_penalty_weight`, `action_rate_penalty_weight`, etc.).
 
